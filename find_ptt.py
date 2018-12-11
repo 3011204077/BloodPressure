@@ -29,25 +29,37 @@ def gen_time_ecg_ppg(file, wired_Y_N, start, end): #start: starting timestamp, e
 def find_ppg_peaks(ppg_dict, thresh_hight):
 	ppg_peak_dict = {}
 	ppg_peak_list = []
+	ppg_low_peak_dict = {}
+	ppg_low_peak_list = []
 	ppg_change_dict = {}
 	ppg_slope_dict = {}
 	for i in range(1, len(ppg_dict) - 1):
-		ppg_change_dict[time_list[i]] = (((ppg_dict[time_list[i+1]] - ppg_dict[time_list[i]]) <= 0) and 
-											((ppg_dict[time_list[i]] - ppg_dict[time_list[i-1]]) > 0))
+		if (((ppg_dict[time_list[i+1]] - ppg_dict[time_list[i]]) <= 0) and 
+											((ppg_dict[time_list[i]] - ppg_dict[time_list[i-1]]) > 0)):
+			ppg_change_dict[time_list[i]] = 1
+		elif ((ppg_dict[time_list[i+1]] - ppg_dict[time_list[i]]) > 0) and ((ppg_dict[time_list[i]] - ppg_dict[time_list[i-1]]) < 0):
+			ppg_change_dict[time_list[i]] = -1
+		else:
+			ppg_change_dict[time_list[i]] = 0
 		ppg_slope_dict[time_list[i]] = (ppg_dict[time_list[i]] - ppg_dict[time_list[i-1]]) / (time_list[i+1] - time_list[i])
 	
 	for entry in ppg_change_dict.keys():
-		if ppg_change_dict[entry] == True:
+		if ppg_change_dict[entry] == 1:
 			ppg_peak_dict[entry] = ppg_dict[entry]
 			ppg_peak_list.append(entry)
+		elif ppg_change_dict[entry] == -1:
+			ppg_low_peak_dict[entry] = ppg_dict[entry]
+			ppg_low_peak_list.append(entry)
 		else:
 			ppg_peak_dict[entry] = 0
+			ppg_low_peak_dict[entry] = 0
 
 	ppg_peak_final_dict = {}
 	ppg_peak_final_dict_2 = {}
 	ppg_peak_final_list = []
 	ppg_peak_final_list_2 = []
 	flat_group = []
+
 	if thresh_hight > 0:
 		for (time, value) in ppg_peak_dict.items():
 			if value > thresh_hight:
@@ -83,7 +95,32 @@ def find_ppg_peaks(ppg_dict, thresh_hight):
 			ppg_peak_final_dict_2[time] = ppg_peak_final_dict[time]
 		else:
 			ppg_peak_final_dict_2[time] = 0
-	return ppg_peak_final_dict_2, ppg_peak_final_list_2
+
+	##### apply the filter(height)
+
+	##### apply the filter(interval, assume heart rate < 160/min, then interval should > 0.375s; height, the 
+	##### difference between neighbour peaks should smaller than a specific threshould)
+	ppg_peak_final_dict_3 = {}
+	ppg_peak_final_list_3 = []
+	i = 0
+	j = 0
+	print (ppg_peak_final_list_2)
+	for i in range(1, len(ppg_peak_final_list_2) - 1):
+		cur_time = ppg_peak_final_list_2[j]
+		next_time = ppg_peak_final_list_2[i]
+		if (next_time - cur_time) > 0.375 and abs(ppg_peak_dict[cur_time] - ppg_peak_dict[next_time]) < 0.3:
+			#ppg_peak_final_dict_3[ppg_peak_final_list_2[i]] = ppg_peak_dict[ppg_peak_final_list_2[i]]
+			ppg_peak_final_list_3.append(cur_time)
+			j = i
+		# else:
+		# 	ppg_peak_final_dict_3[ppg_peak_final_list_2[i]] = 0
+
+	for time in ppg_peak_final_dict_2.keys():
+		if time in ppg_peak_final_list_3:
+			ppg_peak_final_dict_3[time] = ppg_peak_dict[time]
+		else:
+			ppg_peak_final_dict_3[time] = 0
+	return ppg_peak_final_dict_3, ppg_peak_final_list_3, ppg_slope_dict, ppg_low_peak_dict
 
 def find_ecg_peaks(ecg_dict, thresh_hight):
 	ecg_peak_dict = {}
@@ -95,9 +132,6 @@ def find_ecg_peaks(ecg_dict, thresh_hight):
 	ecg_peak_final_dict_2 = {}
 	ecg_peak_final_list = []
 	ecg_peak_final_list_2 = []
-
-#def find rrs(ecg_peak_dict, ecg_peak_list):
-
 
 	for i in range(1, len(ecg_dict) - 1):
 		ecg_change_dict[time_list[i]] = (((ecg_dict[time_list[i+1]] - ecg_dict[time_list[i]]) <= 0) and 
@@ -121,11 +155,35 @@ def find_ecg_peaks(ecg_dict, thresh_hight):
 				ecg_peak_final_dict[entry] = 0
 	else:
 		ecg_peak_final_dict = ecg_peak_dict
+
 	return ecg_peak_final_dict, ecg_peak_final_list
 
+#def find rrs(ecg_peak_dict, ecg_peak_list):
+
+def gen_ptt(ecg_peak_dict, ecg_peak_list, ppg_peak_dict, ppg_peak_list):
+	min_length = min(len(ecg_peak_list), len(ppg_peak_list))
+	i = 0
+	j = 0
+	ppg_peak_ecgtime = {}
+	ptt = {}
+	while i < min_length and j < min_length:
+		diff = ppg_peak_times_final[j] - ecg_peak_times_final[i] #### create a ppg/ecg peak time mapping dict: {ecg_peak_time, ppg_peak_time}
+		if 0.12 < diff <= 0.25:
+			ppg_peak_ecgtime[ecg_peak_times_final[i]] = ppg_peak_times_final[j]
+			ptt[ecg_peak_times_final[i]] = diff
+			i += 1
+			j += 1
+		elif diff < 0:
+			j += 1
+		elif diff > 0.3:
+			i += 1
+	return ptt, ppg_peak_ecgtime
+
+
 time_list, ecg_dict, ppg_dict = gen_time_ecg_ppg('BIOPAC_RAVI_ECG_PPG_SIT.csv', True, 100, 120)
-ppg_peak_final_dict, ppg_peak_final_list = find_ppg_peaks(ppg_dict, 0)
+ppg_peak_final_dict, ppg_peak_final_list, ppg_slope_dict, ppg_low_peak_dict = find_ppg_peaks(ppg_dict, 0)
 ecg_peak_final_dict, ecg_peak_final_list = find_ecg_peaks(ecg_dict, 0.45)
+ptt, ppg_peak_ecgtime = gen_ptt(ecg_peak_final_dict, ecg_peak_list, ppg_peak_final_dict, ecg_peak_final_list)
 #file = csv.reader(open('BIOPAC_RAVI_ECG_PPG_SIT.csv', 'r'))
 #file = csv.reader(open('11-26/wireless_RAVI_ECG_PPG_LOW_STIM.csv', 'r'))
 #file = csv.reader(open('11-27/wireless-Fei-Lead I-PPG-siiting.csv', 'r'))
@@ -237,14 +295,16 @@ ecg_peak_final_dict, ecg_peak_final_list = find_ecg_peaks(ecg_dict, 0.45)
 # 	ampli_ecg.append(entry* 100)
 
 #plt.plot(time_list, ampli_ecg)
-#plt.plot(time_list, ecg_dict.values())
-plt.plot(time_list, ppg_dict.values())
+plt.plot(time_list, ecg_dict.values())
+#plt.plot(time_list, ppg_dict.values())
 #plt.plot(ecg_peak_dict.keys(), ecg_peak_dict.values())
-#plt.plot(ecg_peak_final_dict.keys(), ecg_peak_final_dict.values())
+plt.plot(ecg_peak_final_dict.keys(), ecg_peak_final_dict.values())
 #plt.plot(time_list, ppg_temp_list)
 #plt.plot(ecg_slope_dict.keys(), ecg_slope_dict.values())
 #plt.plot(ppg_peak_dict.keys(), ppg_peak_dict.values())
-plt.plot(ppg_peak_final_dict.keys(), ppg_peak_final_dict.values())
+#plt.plot(ppg_peak_final_dict.keys(), ppg_peak_final_dict.values())
+#plt.plot(ppg_low_peak_dict.keys(), ppg_low_peak_dict.values())
+#plt.plot(ppg_slope_dict.keys(), ppg_slope_dict.values())
 # plt.plot(time_list, ecg_dict.values())
 # plt.plot(time_list, ecg_temp_list)
 plt.show()
