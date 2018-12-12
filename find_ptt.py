@@ -33,7 +33,9 @@ def find_ppg_peaks(ppg_dict, thresh_hight):
 	ppg_low_peak_list = []
 	ppg_change_dict = {}
 	ppg_slope_dict = {}
-	for i in range(1, len(ppg_dict) - 1):
+	ppg_2nd_slope_dict = {}
+	ppg_slope_filted_list = []
+	for i in range(1, len(ppg_dict) - 1): ### actually for slope, it could use range(1,len(ppg_dict))
 		if (((ppg_dict[time_list[i+1]] - ppg_dict[time_list[i]]) <= 0) and 
 											((ppg_dict[time_list[i]] - ppg_dict[time_list[i-1]]) > 0)):
 			ppg_change_dict[time_list[i]] = 1
@@ -41,8 +43,17 @@ def find_ppg_peaks(ppg_dict, thresh_hight):
 			ppg_change_dict[time_list[i]] = -1
 		else:
 			ppg_change_dict[time_list[i]] = 0
-		ppg_slope_dict[time_list[i]] = (ppg_dict[time_list[i]] - ppg_dict[time_list[i-1]]) / (time_list[i+1] - time_list[i])
+		ppg_slope_dict[time_list[i]] = (ppg_dict[time_list[i]] - ppg_dict[time_list[i-1]]) / (time_list[i+1] - time_list[i]) / 50
 	
+	##### generate the slope dict for high peaks, using threshould 15 here
+	for (time, slope) in ppg_slope_dict.items():
+		if slope > 15:
+			ppg_slope_filted_list.append(time)
+
+	##### generate the 2nd order slope, which is the slope of slope
+	for i in range(2, len(ppg_slope_dict) - 1):
+		ppg_2nd_slope_dict[time_list[i]] = (ppg_slope_dict[time_list[i]] - ppg_slope_dict[time_list[i-1]]) / (time_list[i+1] - time_list[i])
+
 	for entry in ppg_change_dict.keys():
 		if ppg_change_dict[entry] == 1:
 			ppg_peak_dict[entry] = ppg_dict[entry]
@@ -71,6 +82,8 @@ def find_ppg_peaks(ppg_dict, thresh_hight):
 		ppg_peak_final_dict = ppg_peak_dict
 		ppg_peak_final_list = ppg_peak_list
 	#i = 0
+	'''
+	##### to detect the flat area and take the middle as the peak, will cause bug in some siuation
 	for i in range(len(ppg_peak_final_list) - 1):
 		if ppg_peak_final_list[i+1] - ppg_peak_final_list[i] < 0.15: #define the threshould to detect the flat area, could be delete in later version
 			flat_group.append(ppg_peak_final_list[i])
@@ -82,6 +95,7 @@ def find_ppg_peaks(ppg_dict, thresh_hight):
 				flat_group.append(ppg_peak_final_list[i])
 				ppg_peak_final_list_2.append(flat_group[int(len(flat_group) / 2)])
 				flat_group = []
+
 	##### to take care of the last peak
 	if flat_group != []:
 		flat_group.append(ppg_peak_final_list[-1])
@@ -95,32 +109,45 @@ def find_ppg_peaks(ppg_dict, thresh_hight):
 			ppg_peak_final_dict_2[time] = ppg_peak_final_dict[time]
 		else:
 			ppg_peak_final_dict_2[time] = 0
+	'''
 
-	##### apply the filter(height)
+	ppg_peak_final_dict_2 = ppg_peak_final_dict
+	ppg_peak_final_list_2 = ppg_peak_final_list	
 
 	##### apply the filter(interval, assume heart rate < 160/min, then interval should > 0.375s; height, the 
 	##### difference between neighbour peaks should smaller than a specific threshould)
 	ppg_peak_final_dict_3 = {}
 	ppg_peak_final_list_3 = []
-	i = 0
-	j = 0
-	print (ppg_peak_final_list_2)
-	for i in range(1, len(ppg_peak_final_list_2) - 1):
-		cur_time = ppg_peak_final_list_2[j]
-		next_time = ppg_peak_final_list_2[i]
-		if (next_time - cur_time) > 0.375 and abs(ppg_peak_dict[cur_time] - ppg_peak_dict[next_time]) < 0.3:
-			#ppg_peak_final_dict_3[ppg_peak_final_list_2[i]] = ppg_peak_dict[ppg_peak_final_list_2[i]]
-			ppg_peak_final_list_3.append(cur_time)
-			j = i
-		# else:
-		# 	ppg_peak_final_dict_3[ppg_peak_final_list_2[i]] = 0
+	# i = 0
+	# j = 0
+	# print (ppg_peak_final_list_2)
+	# for i in range(1, len(ppg_peak_final_list_2) - 1):
+	# 	cur_time = ppg_peak_final_list_2[j]
+	# 	next_time = ppg_peak_final_list_2[i]
+	# 	if (next_time - cur_time) > 0.375 and abs(ppg_peak_dict[cur_time] - ppg_peak_dict[next_time]) < 0.3:
+	# 		#ppg_peak_final_dict_3[ppg_peak_final_list_2[i]] = ppg_peak_dict[ppg_peak_final_list_2[i]]
+	# 		ppg_peak_final_list_3.append(cur_time)
+	# 		j = i
+	# 	# else:
+	# 	# 	ppg_peak_final_dict_3[ppg_peak_final_list_2[i]] = 0
 
-	for time in ppg_peak_final_dict_2.keys():
+	# for time in ppg_peak_final_dict_2.keys():
+	# 	if time in ppg_peak_final_list_3:
+	# 		ppg_peak_final_dict_3[time] = ppg_peak_dict[time]
+	# 	else:
+	# 		ppg_peak_final_dict_3[time] = 0
+
+	##### use the 2nd derivate to filt the ppg peaks, set the threshould for real peaks to -3.5
+	for time in (ppg_peak_final_list_2):
+		if ppg_2nd_slope_dict[time] < -3.5:
+			ppg_peak_final_list_3.append(time)
+	for (time, value) in ppg_peak_final_dict_2.items():
 		if time in ppg_peak_final_list_3:
-			ppg_peak_final_dict_3[time] = ppg_peak_dict[time]
+			ppg_peak_final_dict_3[time] = value
 		else:
 			ppg_peak_final_dict_3[time] = 0
-	return ppg_peak_final_dict_3, ppg_peak_final_list_3, ppg_slope_dict, ppg_low_peak_dict
+
+	return ppg_peak_final_dict_3, ppg_peak_final_list_3, ppg_2nd_slope_dict, ppg_low_peak_dict
 
 def find_ecg_peaks(ecg_dict, thresh_hight):
 	ecg_peak_dict = {}
@@ -180,10 +207,15 @@ def gen_ptt(ecg_peak_dict, ecg_peak_list, ppg_peak_dict, ppg_peak_list):
 	return ptt, ppg_peak_ecgtime
 
 
-time_list, ecg_dict, ppg_dict = gen_time_ecg_ppg('BIOPAC_RAVI_ECG_PPG_SIT.csv', True, 100, 120)
+time_list, ecg_dict, ppg_dict = gen_time_ecg_ppg('BIOPAC_RAVI_ECG_PPG_SIT.csv', True, 15, 300)
 ppg_peak_final_dict, ppg_peak_final_list, ppg_slope_dict, ppg_low_peak_dict = find_ppg_peaks(ppg_dict, 0)
 ecg_peak_final_dict, ecg_peak_final_list = find_ecg_peaks(ecg_dict, 0.45)
-ptt, ppg_peak_ecgtime = gen_ptt(ecg_peak_final_dict, ecg_peak_list, ppg_peak_final_dict, ecg_peak_final_list)
+print (len(ppg_peak_final_list))
+print (len(ecg_peak_final_list))
+
+#print (len(ppg_peak_final_dict)) 
+#print (len(ecg_peak_final_dict))
+#ptt, ppg_peak_ecgtime = gen_ptt(ecg_peak_final_dict, ecg_peak_list, ppg_peak_final_dict, ecg_peak_final_list)
 #file = csv.reader(open('BIOPAC_RAVI_ECG_PPG_SIT.csv', 'r'))
 #file = csv.reader(open('11-26/wireless_RAVI_ECG_PPG_LOW_STIM.csv', 'r'))
 #file = csv.reader(open('11-27/wireless-Fei-Lead I-PPG-siiting.csv', 'r'))
